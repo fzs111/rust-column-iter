@@ -87,6 +87,9 @@ impl<'a, T> IndexMut<usize> for Column<'a, T> {
     }
 }
 
+unsafe impl<'a, T> Send for Column<'a, T> where [T]: Send {}
+unsafe impl<'a, T> Sync for Column<'a, T> where [T]: Sync {}
+
 #[cfg(test)]
 mod test {
     use super::*;
