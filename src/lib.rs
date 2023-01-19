@@ -1,14 +1,14 @@
 use core::ops::{Index, IndexMut};
-use std::{marker::PhantomData};
+use std::marker::PhantomData;
 
-struct ColumnIterMut<'a, T>{
+pub struct ColumnIterMut<'a, T>{
     data: &'a mut [T],
     period: usize,
     offset: usize
 }
 
 impl<'a, T> ColumnIterMut<'a, T> {
-    fn new(data: &'a mut [T], period: usize) -> Self {
+    pub fn new(data: &'a mut [T], period: usize) -> Self {
         assert!(period > 0);
 
         Self { data, period, offset: 0 }
@@ -16,13 +16,12 @@ impl<'a, T> ColumnIterMut<'a, T> {
 }
 
 impl<'a, T> Iterator for ColumnIterMut<'a, T> {
-    type Item = Column<'a, [T]>;
+    type Item = Column<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.offset < self.period {
             let col = Column{
-                ptr: self.data as *mut [T],
-                len: (self.data.len() + self.period - self.offset - 1) / self.period, 
+                ptr: self.data as *mut [T], 
                 _lifetime: PhantomData,
                 offset: self.offset,
                 period: self.period
@@ -37,125 +36,86 @@ impl<'a, T> Iterator for ColumnIterMut<'a, T> {
     }
 }
 
-struct Column<'a, C: ?Sized>{
-    ptr: *mut C,
-    _lifetime: PhantomData<&'a mut C>,
+//INVARIANT: period > 0
+//INVARIANT: offset < period
+//INVARIANT: ptr is always non-null, well-aligned and points to a valid instance of [T]
+//INVARIANT: all Column structs sharing the same slice of data simultaneously
+//           must have equal `period`s and distinct `offset`s
+pub struct Column<'a, T>{
+    ptr: *mut [T],
+    _lifetime: PhantomData<&'a mut [T]>,
     
-    //INVARIANT: period > 0
     period: usize,
-    //INVARIANT: offset < period
     offset: usize,
-    len: usize
 }
 
 impl<'a, T> Column<'a, T> {
-    fn len(&self) -> usize {
-        self.len
-    }
-    /*
-    fn new(data: &'a mut [T], period: usize, offset: usize) -> Self {
-        assert!(period > 0);
-        assert!(offset < period);
-        
-        Self { 
-            ptr: data.as_ptr() as *mut T, 
-            len: data.len(),
-            _lifetime: PhantomData,
-
-            period, 
-            offset,
+    pub fn len(&self) -> usize {
+        unsafe{
+            ((*self.ptr).len() + self.period - self.offset - 1) / self.period
         }
     }
-    */
-    /*
-    fn create_pair(data: &'a mut C) -> (Self, Self) {
-        (
-            Self { 
-                ptr: data as *mut C, 
-                _lifetime: PhantomData,
-                period: 2, 
-                offset: 0 
-            },
-            Self { 
-                ptr: data as *mut C, 
-                _lifetime: PhantomData,
-                period: 2, 
-                offset: 1
-            }
-        )
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
-    */
+
+    fn map_index(&self, index: usize) -> usize {
+        index * self.period + self.offset
+    }
 }
 
-impl<'a, C: ?Sized> Index<usize> for Column<'a, C>
-where C: Index<usize>
-{
-    type Output = C::Output;
+impl<'a, T> Index<usize> for Column<'a, T> {
+    type Output = T;
     
     fn index(&self, index: usize) -> &Self::Output {
         unsafe{
-            &(*self.ptr)[index * self.period + self.offset]
+            //SAFETY: if the invariants are maintained, the indices returned by 
+            //        `Self::map_index()` will be exclusive to this instance of the struct
+            &(*self.ptr)[self.map_index(index)]
         }
     }
 }
 
-impl<'a, C: ?Sized> IndexMut<usize> for Column<'a, C>
-where C: IndexMut<usize>
-{    
+impl<'a, T> IndexMut<usize> for Column<'a, T> {    
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         unsafe{
-            &mut (*self.ptr)[index * self.period + self.offset]
+            //SAFETY: if the invariants are maintained, the indices returned by 
+            //        `Self::map_index()` will be exclusive to this instance of the struct
+            &mut (*self.ptr)[self.map_index(index)]
         }
     }
 }
-
 
 #[cfg(test)]
 mod test {
     use super::*;
-    /*
-    #[test]
-    fn immutable_indexing() {
-        let mut data = vec![0, 1, 2, 3, 4];
-
-        let column = Column::new(&mut data, 2, 0);
-
-        assert_eq!(column[0], 0);
-        assert_eq!(column[1], 2);
-        assert_eq!(column[2], 4);
-
-        let column = Column::new(&mut data, 2, 1);
-
-        assert_eq!(column[0], 1);
-        assert_eq!(column[1], 3);
-    }
-
-    #[test]
-    fn mutable_indexing() {
-        let mut data = vec![0, 1, 2, 3, 4];
-
-        let mut column = Column::new(&mut data, 2, 0);
-
-        column[1] = 12;
-        assert_eq!(data, vec![0, 1, 12, 3, 4]);
-    }
-    */
+    
     #[test]
     fn column_iter_mut() {
         let mut data = vec![0, 1, 2, 3, 4, 5, 6, 7];
 
         let mut cols = ColumnIterMut::new(&mut data, 3).collect::<Vec<_>>();
         
+        assert_eq!(cols.len(), 3);
+
+        assert_eq!(cols[0].len(), 3);
+        assert_eq!(cols[1].len(), 3);
+        assert_eq!(cols[2].len(), 2);
+
         cols[0][0] = 10;
         cols[1][0] = 11;
         cols[2][0] = 12;
+        assert_eq!(cols[0][0], 10);
+        assert_eq!(cols[1][0], 11);
+        assert_eq!(cols[2][0], 12);
+        assert_eq!(cols[0][1], 3);
         cols[0][1] = 13;
         cols[1][1] = 14;
         cols[2][1] = 15;
         cols[0][2] = 16;
         cols[1][2] = 17;
         
-
         assert_eq!(data, vec![10, 11, 12, 13, 14, 15, 16, 17]);
     }
 }
