@@ -1,5 +1,5 @@
 use core::ops::{Index, IndexMut};
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 pub struct ColumnIterMut<'a, T>{
     data: &'a mut [T],
@@ -72,6 +72,8 @@ impl<'a, T> Index<usize> for Column<'a, T> {
         unsafe{
             //SAFETY: if the invariants are maintained, the indices returned by 
             //        `Self::map_index()` will be exclusive to this instance of the struct
+
+            //TODO: move bound-checking to here to provide more helpful panic messages
             &(*self.ptr)[self.map_index(index)]
         }
     }
@@ -82,6 +84,8 @@ impl<'a, T> IndexMut<usize> for Column<'a, T> {
         unsafe{
             //SAFETY: if the invariants are maintained, the indices returned by 
             //        `Self::map_index()` will be exclusive to this instance of the struct
+
+            //TODO: move bound-checking to here to provide more helpful panic messages
             &mut (*self.ptr)[self.map_index(index)]
         }
     }
@@ -120,5 +124,18 @@ mod test {
         cols[1][2] = 17;
         
         assert_eq!(data, vec![10, 11, 12, 13, 14, 15, 16, 17]);
+    }
+    #[test]
+    #[should_panic(expected = "index out of bounds: the len is 8 but the index is 9")]
+    fn column_index_overflow() {
+        let mut data = vec![0, 1, 2, 3, 4, 5, 6, 7];
+
+        let cols = ColumnIterMut::new(&mut data, 3).collect::<Vec<_>>();
+
+
+        assert_eq!(cols[0][0], 0);
+        assert_eq!(cols[0][1], 3);
+        assert_eq!(cols[0][2], 6);
+        cols[0][3];
     }
 }
