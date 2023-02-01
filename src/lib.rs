@@ -6,8 +6,9 @@ use core::marker::PhantomData;
 use core::ptr::NonNull;
 
 pub struct ColumnMutIter<'a, T>{
-    ptr: NonNull<[T]>,
+    ptr: NonNull<T>,
     _lifetime: PhantomData<&'a mut [T]>,
+    len: usize,
 
     column_count: usize,
     offset: usize
@@ -20,9 +21,17 @@ impl<'a, T> ColumnMutIter<'a, T> {
         //TODO Support ZSTs
         assert!(size_of::<T>() != 0, "ZSTs are not yet supported");
 
+        let ptr = unsafe{
+            //SAFETY: slice can not be null, pointers are only needed for the typecast
+            
+            NonNull::new_unchecked(slice as *mut [T] as *mut T)
+        };
+
         Self { 
-            ptr: NonNull::from(slice), 
+            ptr, 
             _lifetime: PhantomData,
+            len: slice.len(),
+
             column_count, 
             offset: 0 
         }
@@ -34,16 +43,11 @@ impl<'a, T> Iterator for ColumnMutIter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.offset < self.column_count {
-            let casted_ptr = unsafe{
-                //TODO Add safety comment
-                NonNull::new_unchecked(self.ptr.as_ptr() as *mut T)
-            };
-
             let col = ColumnMut{
-                ptr: casted_ptr, 
+                ptr: self.ptr, 
                 _lifetime: PhantomData,
                 //TODO pre-compute len
-                len: (self.ptr.len() + self.column_count - self.offset - 1) / self.column_count,
+                len: (self.len + self.column_count - self.offset - 1) / self.column_count,
                 offset: self.offset,
                 column_count: self.column_count
             };
