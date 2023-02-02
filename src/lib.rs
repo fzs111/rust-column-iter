@@ -11,7 +11,6 @@ pub struct ColumnMutIter<'a, T>{
     len: usize,
 
     column_count: usize,
-    offset: usize
 }
 
 impl<'a, T> ColumnMutIter<'a, T> {
@@ -48,7 +47,6 @@ impl<'a, T> Iterator for ColumnMutIter<'a, T> {
                 _lifetime: PhantomData,
                 //TODO pre-compute len
                 len: (self.len + self.column_count - self.offset - 1) / self.column_count,
-                offset: self.offset,
                 column_count: self.column_count
             };
 
@@ -73,7 +71,6 @@ pub struct ColumnMut<'a, T>{
     len: usize,
     
     column_count: usize,
-    offset: usize,
 }
 
 impl<'a, T> ColumnMut<'a, T> {
@@ -86,7 +83,7 @@ impl<'a, T> ColumnMut<'a, T> {
     }
 
     fn map_index(&self, index: usize) -> usize {
-        index * self.column_count + self.offset
+        index * self.column_count
     }
     
     unsafe fn get_ptr(&self, index: usize) -> *const T {
