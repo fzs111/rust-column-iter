@@ -18,8 +18,6 @@ pub struct ColumnMutIter<'a, T>{
 
 impl<'a, T> ColumnMutIter<'a, T> {
     pub fn new(slice: &'a mut [T], column_count: NonZeroUsize) -> Self {
-        //TODO Support ZSTs
-        assert!(size_of::<T>() != 0, "ZSTs are not yet supported");
 
         let row_count = slice.len() / column_count;
 
@@ -43,16 +41,16 @@ impl<'a, T> Iterator for ColumnMutIter<'a, T> {
         if self.column_offset < self.column_count.get() {
             let column_len = self.row_count;
 
-            let ptr = if column_len > 0 {
+            let ptr = if column_len == 0 || size_of::<T>() == 0 {
+                //TODO: Add safety comment
+
+                NonNull::dangling()
+            } else {
                 unsafe{
                     //SAFETY: if the length of the current row is >0, it is safe to construct its pointer
 
                     NonNull::new_unchecked(self.ptr.add(self.column_offset))
                 }
-            } else {
-                //SAFETY: this will only happen when the length is 0, so the resulting pointer will never be dereferenced
-
-                NonNull::dangling()
             };
 
             let col = ColumnMut{
@@ -99,8 +97,13 @@ impl<'a, T> ColumnMut<'a, T> {
     
     unsafe fn get_ptr(&self, index: usize) -> *const T {
         //SAFETY: This function must be called with a valid index
+        //TODO: Should this return a NonNull pointer?
 
-        self.ptr.as_ptr().add(self.map_index(index))
+        if size_of::<T>() != 0 {
+            self.ptr.as_ptr().add(self.map_index(index))
+        } else {
+            NonNull::dangling().as_ptr()
+        }
     }
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         if index >= self.len() {
