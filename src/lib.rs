@@ -1,6 +1,7 @@
 #![no_std]
 
 use core::mem::size_of;
+use core::num::NonZeroUsize;
 use core::ops::{Index, IndexMut};
 use core::marker::PhantomData;
 use core::ptr::NonNull;
@@ -10,22 +11,19 @@ pub struct ColumnMutIter<'a, T>{
     ptr: *mut T,
     _lifetime: PhantomData<&'a mut [T]>,
 
-    column_count: usize,
+    column_count: NonZeroUsize,
     column_offset: usize,
     row_count: usize,
 }
 
 impl<'a, T> ColumnMutIter<'a, T> {
-    pub fn new(slice: &'a mut [T], column_count: usize) -> Self {
-        assert!(column_count > 0);
-
+    pub fn new(slice: &'a mut [T], column_count: NonZeroUsize) -> Self {
         //TODO Support ZSTs
         assert!(size_of::<T>() != 0, "ZSTs are not yet supported");
 
         let row_count = slice.len() / column_count;
 
-        assert!(column_count * row_count == slice.len(), "The slice must be a rectangle");
-        assert!(row_count > 0);
+        assert!(column_count.get() * row_count == slice.len(), "The slice must be a rectangle");
 
         Self { 
             ptr: slice.as_mut_ptr(), 
@@ -42,25 +40,29 @@ impl<'a, T> Iterator for ColumnMutIter<'a, T> {
     type Item = ColumnMut<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.column_offset < self.column_count {
-            let ptr = unsafe{
-                //SAFETY: self.ptr may not be null
-                
-                NonNull::new_unchecked(self.ptr)
+        if self.column_offset < self.column_count.get() {
+            let column_len = self.row_count;
+
+            let ptr = if column_len > 0 {
+                unsafe{
+                    //SAFETY: if the length of the current row is >0, it is safe to construct its pointer
+
+                    NonNull::new_unchecked(self.ptr.add(self.column_offset))
+                }
+            } else {
+                //SAFETY: this will only happen when the length is 0, so the resulting pointer will never be dereferenced
+
+                NonNull::dangling()
             };
 
             let col = ColumnMut{
                 ptr, 
                 _lifetime: PhantomData,
-                //TODO pre-compute len
-                len: self.row_count,
+                len: column_len,
                 column_count: self.column_count
             };
 
-            unsafe{
-                //TODO add safety comment
-                self.ptr = self.ptr.add(1);
-            }
+            self.column_offset += 1;
 
             Some(col)
         } else {
@@ -69,7 +71,6 @@ impl<'a, T> Iterator for ColumnMutIter<'a, T> {
     }
 }
 
-//INVARIANT: column_count > 0
 //INVARIANT: offset < column_count
 //INVARIANT: ptr is well-aligned and points to a valid instance of [T]
 //INVARIANT: len * column_count + offset <= [T].len()
@@ -80,7 +81,7 @@ pub struct ColumnMut<'a, T>{
     _lifetime: PhantomData<&'a mut [T]>,
     len: usize,
     
-    column_count: usize,
+    column_count: NonZeroUsize,
 }
 
 impl<'a, T> ColumnMut<'a, T> {
@@ -93,7 +94,7 @@ impl<'a, T> ColumnMut<'a, T> {
     }
 
     fn map_index(&self, index: usize) -> usize {
-        index * self.column_count
+        index * self.column_count.get()
     }
     
     unsafe fn get_ptr(&self, index: usize) -> *const T {
