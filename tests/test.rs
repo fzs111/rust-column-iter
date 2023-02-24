@@ -1,47 +1,52 @@
 
 #![cfg(test)]
 
+use std::{num::NonZeroUsize, fmt::Debug};
+
 use column_iter::*;
 
 //TODO: Add a LOT MORE tests!
 
 #[test]
-fn column_iter_mut() {
-    let mut data = vec![0, 1, 2, 3, 4, 5, 6, 7];
-
-    let mut cols = ColumnMutIter::new(&mut data, 3).collect::<Vec<_>>();
-    
-    assert_eq!(cols.len(), 3);
-
-    assert_eq!(cols[0].len(), 3);
-    assert_eq!(cols[1].len(), 3);
-    assert_eq!(cols[2].len(), 2);
-
-    cols[0][0] = 10;
-    cols[1][0] = 11;
-    cols[2][0] = 12;
-    assert_eq!(cols[0][0], 10);
-    assert_eq!(cols[1][0], 11);
-    assert_eq!(cols[2][0], 12);
-    assert_eq!(cols[0][1], 3);
-    cols[0][1] = 13;
-    cols[1][1] = 14;
-    cols[2][1] = 15;
-    cols[0][2] = 16;
-    cols[1][2] = 17;
-    
-    assert_eq!(data, vec![10, 11, 12, 13, 14, 15, 16, 17]);
+fn read() {
+    test_usize_read(1, 1);
+    test_usize_read(5, 6);
+    test_usize_read(297, 13);
+    test_usize_read(13, 297);
 }
+
 #[test]
-#[should_panic(expected = "index out of bounds: the len is 8 but the index is 9")]
-fn column_index_overflow() {
-    let mut data = vec![0, 1, 2, 3, 4, 5, 6, 7];
+fn zero_length_slice(){
+    test_usize_read(1, 0);
+    test_usize_read(10000, 0);
+}
 
-    let cols = ColumnMutIter::new(&mut data, 3).collect::<Vec<_>>();
+fn test_read<T, F>(data: &mut [T], col_count: usize, row_count: usize, mut validator: F) 
+    where 
+        F: FnMut(usize, usize) -> T,
+        T: Debug + PartialEq,
+{
 
+    let mut columns: Vec<ColumnMut<T>> = ColumnMutIter::new(
+        data, 
+        NonZeroUsize::new(col_count).unwrap()
+    ).collect();
+    
+    assert_eq!(columns.len(), col_count);
 
-    assert_eq!(cols[0][0], 0);
-    assert_eq!(cols[0][1], 3);
-    assert_eq!(cols[0][2], 6);
-    cols[0][3];
+    for col_idx in 0..col_count {
+        let col: &mut ColumnMut<T> = &mut columns[col_idx];
+
+        assert_eq!(col.len(), row_count);
+        
+        for row_idx in 0..row_count {
+            assert_eq!(col[row_idx], validator(col_idx, row_idx))
+        }
+    }
+}
+
+fn test_usize_read (col_count: usize, row_count: usize) {
+    let mut data: Vec<usize> = (0..col_count * row_count).collect();
+
+    test_read(&mut data, col_count, row_count, | col_idx, row_idx| row_idx * col_count + col_idx);
 }

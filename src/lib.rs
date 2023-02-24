@@ -21,7 +21,7 @@ impl<'a, T> ColumnMutIter<'a, T> {
 
         let row_count = slice.len() / column_count;
 
-        assert!(column_count.get() * row_count == slice.len(), "The slice must be a rectangle");
+        assert!(column_count.get() * row_count == slice.len(), "The length must be divisble by the column_count");
 
         Self { 
             ptr: slice.as_mut_ptr(), 
