@@ -21,6 +21,26 @@ fn zero_length_slice(){
     test_usize_read(10000, 0);
 }
 
+#[test]
+fn zst_read(){
+    let mut data = vec![(); 30*45];
+
+    test_read(&mut data, 30, 45, |_, _| ());
+
+    //TODO Test isize::MAX-sized ZST slices
+
+    /*
+    let mut data: Vec<()> = vec![(); isize::MAX as usize];
+
+    {
+
+    let mut columns: Vec<ColumnMut<T>> = ColumnMutIter::new(
+        &mut data, 
+        NonZeroUsize::new(col_count).unwrap()
+    ).collect();
+    */
+}
+
 fn test_read<T, F>(data: &mut [T], col_count: usize, row_count: usize, mut validator: F) 
     where 
         F: FnMut(usize, usize) -> T,
